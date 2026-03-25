@@ -1,0 +1,202 @@
+import ExcelJS from 'exceljs';
+
+class ExcelService {
+  // Excelファイルからシート情報を抽出
+  async extractSheets(filePath) {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+
+      const sheets = [];
+
+      for (let i = 0; i < workbook.worksheets.length; i++) {
+        const worksheet = workbook.worksheets[i];
+        const sheetName = worksheet.name;
+
+        // 複数のセルから従業員名を抽出（優先度順）
+        let employeeName = null;
+        const cellsToCheck = ['CI2', 'P4', 'A4', 'B4', 'A3', 'B3', 'A2', 'B2', 'A5', 'B5'];
+        
+        console.log(`\n🔎 シート ${i + 1} "${sheetName}" の従業員名を検索中...`);
+        
+        for (const cellRef of cellsToCheck) {
+          try {
+            const cell = worksheet.getCell(cellRef);
+            let cellValue = '';
+            
+            // セルの値を取得（計算結果も含む）
+            if (cell) {
+              // 1. 値を直接取得
+              if (cell.value) {
+                cellValue = String(cell.value).trim();
+              }
+              // 2. 計算結果を取得（VLOOKUP等の式の場合）
+              else if (cell.result) {
+                cellValue = String(cell.result).trim();
+              }
+              // 3. リッチテキストの場合
+              else if (cell.richText) {
+                cellValue = cell.richText.map(rt => rt.text || '').join('').trim();
+              }
+            }
+            
+            console.log(`  📍 セル ${cellRef}: "${cellValue}"`);
+            
+            // 従業員名として有効か判断
+            if (cellValue && cellValue.length > 0 && cellValue.length < 30) {
+              // 従業員名っぽいかチェック
+              const hasKana = /[\u3041-\u3096\u30A1-\u30F6\u4E00-\u9FFF]/.test(cellValue);
+              const isNotDocument = !cellValue.includes('契約') && !cellValue.includes('様式') && 
+                                   !cellValue.includes('雇用') && !cellValue.includes('合意') &&
+                                   !cellValue.includes('VLOOKUP') && !cellValue.includes('#REF');
+              
+              if (hasKana && isNotDocument && cellValue.length >= 2 && cellValue !== 'N/A' && cellValue !== 'FALSE') {
+                employeeName = cellValue;
+                console.log(`  ✅ セル ${cellRef} から従業員名を検出: "${employeeName}"`);
+                break;
+              }
+            }
+          } catch (err) {
+            // 続行
+          }
+        }
+
+        // シート名から括弧内の名前を常に抽出（バックアップ用）
+        let sheetNameExtracted = null;
+        const parenthesesMatch = sheetName.match(/\(([^)]+)\)$/);
+        if (parenthesesMatch && parenthesesMatch[1]) {
+          const extracted = parenthesesMatch[1].trim();
+          if (extracted.length >= 2 && extracted.length < 20) {
+            sheetNameExtracted = extracted;
+            console.log(`  📌 シート名から苗字を抽出: "${sheetNameExtracted}"`);
+          }
+        }
+
+        // セルから見つからない場合、シート名から抽出した名前を使用
+        if (!employeeName && sheetNameExtracted) {
+          employeeName = sheetNameExtracted;
+          console.log(`  ✅ シート名から抽出した苗字を使用: "${employeeName}"`);
+        }
+
+        sheets.push({
+          name: sheetName,
+          index: i,
+          employeeName: employeeName || sheetName,
+          sheetNameExtracted: sheetNameExtracted, // シート名から抽出した苗字（バックアップ用）
+          rowCount: worksheet.rowCount,
+          colCount: worksheet.columnCount
+        });
+
+        console.log(`  📋 確定された従業員名: "${employeeName || sheetName}"`);
+        if (sheetNameExtracted) {
+          console.log(`  📋 シート名から抽出: "${sheetNameExtracted}"\n`);
+        }
+      }
+
+      console.log(`✅ ${sheets.length} 個のシートを抽出しました`);
+      return sheets;
+    } catch (error) {
+      console.error('❌ Excel ファイル解析失敗:', error);
+      throw new Error(`Excel ファイル解析失敗: ${error.message}`);
+    }
+  }
+
+
+  // シートの内容をHTMLとして取得（見た目・結合・計算式を再現）
+  async getSheetHtml(filePath, sheetName) {
+    try {
+      const imported = await import('xlsx');
+      const XLSX = imported.default || imported;
+      const workbook = XLSX.readFile(filePath);
+      
+      const worksheet = workbook.Sheets[sheetName];
+      if (!worksheet) {
+        throw new Error(`シート ${sheetName} が見つかりません`);
+      }
+
+      // エクセルのシートをHTMLの<table>タグに変換（結合なども維持される）
+      const html = XLSX.utils.sheet_to_html(worksheet, { id: 'contract-table' });
+
+      return {
+        sheetName,
+        html
+      };
+    } catch (error) {
+      console.error('❌ シートHTML取得失敗:', error);
+      throw error;
+    }
+  }
+
+  // シートデータの詳細取得（値のみ、空セル保持）- 管理者用等の互換性のため維持
+  async getSheetData(filePath, sheetIndex) {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+      
+      const worksheet = workbook.worksheets[sheetIndex];
+      if (!worksheet) {
+        throw new Error(`シート ${sheetIndex} が見つかりません`);
+      }
+
+      const data = [];
+      let maxCols = 0;
+
+      // 各行の列数を揃えるために最大列数を把握
+      worksheet.eachRow({ includeEmpty: true }, (row) => {
+        if (row.cellCount > maxCols) {
+          maxCols = row.cellCount;
+        }
+      });
+
+      worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+        const rowData = [];
+        // 1列目から maxCols まで確実にループして、空セルによるズレを防ぐ
+        for (let colNumber = 1; colNumber <= maxCols; colNumber++) {
+          const cell = row.getCell(colNumber);
+          let cellValue = '';
+          
+          if (cell && cell.value !== null && cell.value !== undefined) {
+             const val = cell.value;
+             // 計算式の場合
+             if (typeof val === 'object') {
+                if (val.result !== undefined) {
+                   cellValue = val.result;
+                } else if (val.richText) {
+                   cellValue = val.richText.map(rt => rt.text).join('');
+                } else if (val.text !== undefined) {
+                   cellValue = val.text;
+                } else {
+                   cellValue = ''; // 解釈不能なオブジェクトは空文字に
+                }
+             } else {
+                cellValue = val;
+             }
+          }
+          rowData.push(cellValue);
+        }
+        data.push(rowData);
+      });
+
+      // 末尾の完全に空な行を削除（見た目をスッキリさせるため）
+      while (data.length > 0) {
+        const lastRow = data[data.length - 1];
+        if (lastRow.every(cell => cell === '' || cell === null)) {
+          data.pop();
+        } else {
+          break;
+        }
+      }
+
+      return {
+        sheetName: worksheet.name,
+        sheetIndex,
+        data
+      };
+    } catch (error) {
+      console.error('❌ シートデータ取得失敗:', error);
+      throw error;
+    }
+  }
+}
+
+export default new ExcelService();

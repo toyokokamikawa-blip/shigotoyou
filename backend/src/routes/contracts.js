@@ -1,0 +1,54 @@
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import contractController from '../controllers/contractController.js';
+
+const router = express.Router();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// multer: ファイルアップロード設定
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const ext = path.extname(originalName);
+    const name = path.basename(originalName, ext);
+    cb(null, `${name}-${timestamp}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const allowedExt = ['.xlsx', '.xls'];
+    const ext = path.extname(originalName).toLowerCase();
+    if (allowedExt.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Excel ファイル（.xlsx, .xls）のみ対応'));
+    }
+  }
+});
+
+// ルート定義
+// GET: 全契約書取得
+router.get('/', contractController.getContracts);
+
+// POST: Excel ファイルアップロード
+router.post('/upload', upload.single('file'), contractController.uploadContract);
+
+// GET: 特定の契約書詳細
+router.get('/:id', contractController.getContractDetail);
+
+// GET: 契約書シート一覧
+router.get('/:contractId/sheets', contractController.getContractSheets);
+
+export default router;
