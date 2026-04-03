@@ -53,10 +53,13 @@ export async function initContracts() {
   }
 
   // ログアウトボタン
-  document.getElementById('logoutBtn').addEventListener('click', () => {
-    clearToken();
-    navigateTo('/login');
-  });
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      clearToken();
+      navigateTo('/login');
+    });
+  }
 
   // LINE連携ボタン
   const lineLinkBtn = document.getElementById('lineLinkBtn');
@@ -87,11 +90,15 @@ export async function initContracts() {
     // 統計更新
     const pending = contracts.filter(c => c.status !== 'signed' && c.status !== 'completed').length;
     const signed = contracts.filter(c => c.status === 'signed' || c.status === 'completed').length;
-    document.getElementById('statPending').textContent = pending;
-    document.getElementById('statSigned').textContent = signed;
+    
+    const statPending = document.getElementById('statPending');
+    const statSigned = document.getElementById('statSigned');
+    if (statPending) statPending.textContent = pending;
+    if (statSigned) statSigned.textContent = signed;
 
     // リスト描画
     const listEl = document.getElementById('contractList');
+    if (!listEl) return;
 
     if (contracts.length === 0) {
       listEl.innerHTML = `
@@ -137,12 +144,15 @@ export async function initContracts() {
     });
 
   } catch (error) {
-    document.getElementById('contractList').innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state__icon">⚠️</div>
-        <div class="empty-state__text">読み込みに失敗しました: ${escapeHtml(error.message)}</div>
-      </div>
-    `;
+    const listEl = document.getElementById('contractList');
+    if (listEl) {
+      listEl.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state__icon">⚠️</div>
+          <div class="empty-state__text">読み込みに失敗しました: ${escapeHtml(error.message)}</div>
+        </div>
+      `;
+    }
   }
 }
 
