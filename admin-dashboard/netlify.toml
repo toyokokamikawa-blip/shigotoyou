@@ -1,0 +1,4 @@
+[build]
+  base = "admin-dashboard"
+  command = "npm run build"
+  publish = "admin-dashboard/build"
