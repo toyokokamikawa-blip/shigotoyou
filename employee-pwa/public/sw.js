@@ -63,7 +63,16 @@ self.addEventListener('push', (event) => {
     data: { url: data.url || '/' }
   };
 
-  event.waitUntil(self.registration.showNotification(data.title, options));
+  const promises = [];
+  promises.push(self.registration.showNotification(data.title, options));
+
+  // アプリアイコンのバッジ数を更新
+  if ('setAppBadge' in navigator) {
+    const badgeCount = data.badgeCount || 1;
+    promises.push(navigator.setAppBadge(badgeCount).catch(err => console.warn('Badge error:', err)));
+  }
+
+  event.waitUntil(Promise.all(promises));
 });
 
 // 通知クリック

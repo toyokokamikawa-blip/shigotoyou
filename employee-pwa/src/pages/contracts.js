@@ -90,6 +90,15 @@ export async function initContracts() {
     document.getElementById('statPending').textContent = pending;
     document.getElementById('statSigned').textContent = signed;
 
+    // アプリアイコンのバッジ数を更新
+    if ('setAppBadge' in navigator) {
+      if (pending > 0) {
+        navigator.setAppBadge(pending).catch(err => console.warn('Badge error:', err));
+      } else {
+        navigator.clearAppBadge().catch(err => console.warn('Badge error:', err));
+      }
+    }
+
     // リスト描画
     const listEl = document.getElementById('contractList');
 

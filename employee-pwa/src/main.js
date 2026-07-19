@@ -99,14 +99,21 @@ export function showToast(message, type = 'info') {
 async function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     try {
-      // 開発環境のViteでService Workerが有効だとESモジュール読み込みが壊れて画面が真っ白になるため、登録を解除する
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) {
-        await registration.unregister();
-        console.log('✅ 古いService Workerを解除しました');
+      const hostname = window.location.hostname;
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        // 開発環境のViteでService Workerが有効だとESモジュール読み込みが壊れて画面が真っ白になるため、登録を解除する
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+          await registration.unregister();
+          console.log('✅ 古いService Workerを解除しました');
+        }
+      } else {
+        // 本番環境（Netlify等）では登録する
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        console.log('✅ Service Worker 登録完了:', registration.scope);
       }
     } catch (error) {
-      console.warn('⚠️ Service Worker 解除エラー:', error.message);
+      console.warn('⚠️ Service Worker 登録/解除エラー:', error.message);
     }
   }
 }

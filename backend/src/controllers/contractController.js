@@ -2,7 +2,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { dbRun, dbQuery, dbGet, getJSTDate } from '../db.js';
 import excelService from '../services/excelService.js';
 import { uploadFileToS3 } from '../services/s3Service.js';
+import { sendPushNotification } from '../routes/push.js';
 import path from 'path';
+class ContractController {
   // 全契約書取得
   async getContracts(req, res) {
     try {
@@ -84,6 +86,7 @@ import path from 'path';
             );
             matchedSheets.push({ sheet_id: sheetId, sheet_name: sheet.name, employee_id: user.employee_id, full_name: user.full_name, email: user.email, status: 'matched' });
             await this.sendLineNotification(user, sheet.name);
+            await this.sendWebPushNotification(user, sheet.name);
           } else {
             matchedSheets.push({ sheet_name: sheet.name, employee_name: employeeName, status: 'unmatched', message: '従業員が見つかりません' });
           }
@@ -136,6 +139,7 @@ import path from 'path';
             
             // LINE通知の送信（ヘルパーメソッドを呼び出す際は this を使用）
             await this.sendLineNotification(user, 'PDF契約書');
+            await this.sendWebPushNotification(user, 'PDF契約書');
           } else {
             matchedSheets.push({ sheet_name: pdfOriginalName, employee_name: nameWithoutExt, status: 'unmatched', message: '従業員が見つかりません' });
           }
@@ -215,6 +219,29 @@ import path from 'path';
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_MESSAGING_ACCESS_TOKEN}` }
         });
       } catch (e) { }
+    }
+  }
+
+  // Webプッシュ通知を送信し、アプリアイコンのバッジ数を更新する
+  async sendWebPushNotification(user, docName) {
+    try {
+      // この従業員の署名待ち契約書数をカウント
+      const pendingResult = await dbGet(
+        `SELECT COUNT(*) as count FROM contract_sheets WHERE user_id = ? AND status != 'signed' AND status != 'completed'`,
+        [user.id]
+      );
+      const badgeCount = pendingResult ? pendingResult.count : 1;
+
+      await sendPushNotification(user.id, {
+        title: '契約書電子承認',
+        body: `${user.full_name}さん、新しい書類（${docName}）が届きました。確認・署名をお願いします。`,
+        tag: 'new-contract',
+        url: '/contracts',
+        badgeCount: badgeCount
+      });
+      console.log(`✅ Webプッシュ通知送信: ${user.full_name} (バッジ数: ${badgeCount})`);
+    } catch (e) {
+      console.warn(`⚠️ Webプッシュ通知送信失敗 (${user.full_name}):`, e.message);
     }
   }
 
